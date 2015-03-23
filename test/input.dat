@@ -1,0 +1,31 @@
+
+# PYTHONPATH must include directory above plugin directory.
+#     Define either externally or here, then import plugin.
+import my_ccsd
+
+molecule {
+C  -0.000000000000   0.000000000000   0.000000000000
+H   1.183771681898  -1.183771681898  -1.183771681898
+H   1.183771681898   1.183771681898   1.183771681898
+H  -1.183771681898   1.183771681898  -1.183771681898
+H  -1.183771681898  -1.183771681898   1.183771681898
+
+units bohr
+symmetry c1
+}
+
+set {
+  basis DZ
+  scf_type pk
+}
+
+
+set my_ccsd {
+  print 1
+}
+set ccenergy{
+  E_CONVERGENCE 1e-13
+}
+
+energy('my_ccsd')
+energy('ccsd')
