@@ -969,7 +969,7 @@ my_ccsd(Options &options)
 
         outfile->Printf("\n   [%3d]      %20.12f   %20.12f   %14.6f", count, Ecc, dE, RMS);
 
-        if(dE < 1e-15 and RMS < 1e-6 ){
+        if(dE < 1e-10 and RMS < 1e-6 ){
             converged = true;
             outfile->Printf("\nCCSD energy has converged in %d cycles.\n", count);
         }
