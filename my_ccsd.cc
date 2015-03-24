@@ -162,6 +162,7 @@ my_ccsd(Options &options)
     typedef boost::multi_array<double, 4> quad;
     quad spo_TEI(boost::extents[nso][nso][nso][nso]);
 
+    //Construct the antisymmetrized TEIs in  spin orbital basis
     for(int p=0; p < nso; p++)
       for(int q=0; q < nso; q++)
         for(int r=0; r < nso; r++)
@@ -195,7 +196,7 @@ my_ccsd(Options &options)
         fMat->set(2*i+1,2*i+1,fMatMO->get(i,i));
     }
 
-    //Generate the indices for nocc and nvir
+    //Generate the indices, nocc and nvir
     boost::shared_ptr<Vector> eps_occ = wfn->epsilon_a_subset("AO", "OCC");
     boost::shared_ptr<Vector> eps_vir = wfn->epsilon_a_subset("AO", "VIR");
 
@@ -234,6 +235,8 @@ my_ccsd(Options &options)
     }
 
     Emp2 = Emp2/(4.0);
+
+    //Grab RHF reference energy
     double Eref = wfn->reference_energy();
 
 
@@ -244,14 +247,17 @@ my_ccsd(Options &options)
     int count = 0;
     quad t2prev(boost::extents[nocc][nocc][nvir][nvir]);
 
-    /** Everything is correct to here **/
 
     outfile->Printf("\n    Iter                E(CCSD)                Delta(E)            RMS(T2)   \n");
     outfile->Printf("----------------------------------------------------------------------------------");
     outfile->Flush();
-   while(converged == false){
 
-        //Definitions of the one-particle intermediates. Names are based on indices used in the Stanton paper.
+    //Begin the loop to generate updated t1 and t2 amps, break when converged
+    while(converged == false){
+
+        /*Definitions of the one-particle intermediates. Names are based on indices used in the Stanton paper.
+         *All intermediates are build term-by-term, usually using several sets of loops.
+        */
 
         boost::shared_ptr<Matrix> Fae(new Matrix("Fae", nvir, nvir));
         boost::shared_ptr<Matrix> Fmi(new Matrix("Fmi", nocc, nocc));
@@ -611,9 +617,16 @@ my_ccsd(Options &options)
         }
 
 
-        ///Now for the t2 equation
+        //Now for the t2 equation
+
+        //Define a 4D array (t2D) that will represent the t2 aplitudes multiplied by the two-particle
+        //denominators.
 
         quad t2D(boost::extents[nocc][nocc][nvir][nvir]);
+
+        //All matrices of the form t2D# are used as intermediate terms in the t2 equation. Hopefully
+        //I'll reduce the number of these
+
         boost::shared_ptr<Matrix> t2D1(new Matrix("t2D1", nvir, nvir));
 
         t2D.empty();
@@ -911,6 +924,7 @@ my_ccsd(Options &options)
             }
         }
 
+        //Now we need to take our terms t1D and t2D, and divide by the respective denominators
 
         //The updated t1 amps are:
 
@@ -919,8 +933,6 @@ my_ccsd(Options &options)
                 t1->set(i,a, t1D->get(i,a) / (fMat->get(i,i) - fMat->get(a+nocc, a+nocc)) );
             }
         }
-
-        //t1->print();
 
         //The updated t2 amps are:
 
@@ -950,8 +962,11 @@ my_ccsd(Options &options)
                 }
             }
         }
+
+        //Count the iterations
         count++;
 
+        //Compute the energy difference wrt the previous iteration
         dE = fabs(Ecc - Eprev);
 
         //calculate RMS in t2 amps
@@ -967,8 +982,10 @@ my_ccsd(Options &options)
         }
         RMS = sqrt(RMS);
 
+        //Print the results for each iteration
         outfile->Printf("\n   [%3d]      %20.12f   %20.12f   %14.6f", count, Ecc, dE, RMS);
 
+        //Convergence criteria defined here, should NOT be hard-coded
         if(dE < 1e-10 and RMS < 1e-6 ){
             converged = true;
             outfile->Printf("\nCCSD energy has converged in %d cycles.\n", count);
