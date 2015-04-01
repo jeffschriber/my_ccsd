@@ -158,11 +158,11 @@ my_ccsd(Options &options)
     outfile->Flush();
     int nso = 2*dim;
 
-    //Here I define 'quad', which creates a 4D array
+    //Here I define 'quad', which creates a 4D array of doubles
     typedef boost::multi_array<double, 4> quad;
     quad spo_TEI(boost::extents[nso][nso][nso][nso]);
 
-    //Construct the antisymmetrized TEIs in  spin orbital basis
+    //Construct the antisymmetrized TEIs in spin orbital basis
     for(int p=0; p < nso; p++)
       for(int q=0; q < nso; q++)
         for(int r=0; r < nso; r++)
@@ -988,17 +988,55 @@ my_ccsd(Options &options)
         //Convergence criteria defined here, should NOT be hard-coded
         if(dE < 1e-10 and RMS < 1e-6 ){
             converged = true;
-            outfile->Printf("\nCCSD energy has converged in %d cycles.\n", count);
+            outfile->Printf("\n\nCCSD energy has converged in %d cycles.\n", count);
         }
 
     }//end while loop
 
+    //Calclulate perturbative triples correction (CCSD(T))
+
+    outfile->Printf("\nComputing triples (T) correction\n");
+    double Et = 0.0;
+    double Eint;
+
+    for(int i = 0; i < nocc; ++i){
+        for(int j = 0; j < nocc; ++j){
+            for(int k = 0; k < nocc; ++k){
+                for(int a = 0; a < nvir; ++a){
+                    for(int b = 0; b < nvir; ++b){
+                        for(int c = 0; c < nvir; ++c){
+                            Eint = 0.0;
+                            for(int e = 0; e < nvir; ++e){
+                                Eint +=    (t2[j][k][a][e]*spo_TEI[e+nocc][i][b+nocc][c+nocc] - t2[j][k][b][e]*spo_TEI[e+nocc][i][a+nocc][c+nocc] - t2[j][k][c][e]*spo_TEI[e+nocc][i][b+nocc][a+nocc]
+                                          - t2[i][k][a][e]*spo_TEI[e+nocc][j][b+nocc][c+nocc] + t2[i][k][b][e]*spo_TEI[e+nocc][j][a+nocc][c+nocc] + t2[i][k][c][e]*spo_TEI[e+nocc][j][b+nocc][a+nocc]
+                                          - t2[j][i][a][e]*spo_TEI[e+nocc][k][b+nocc][c+nocc] + t2[j][i][b][e]*spo_TEI[e+nocc][k][a+nocc][c+nocc] + t2[j][i][c][e]*spo_TEI[e+nocc][k][b+nocc][a+nocc]);
+                            }
+                            for(int m = 0; m < nocc; ++m){
+                                Eint += ((-1.0)*t2[i][m][b][c]*spo_TEI[m][a+nocc][j][k] + t2[i][m][a][c]*spo_TEI[m][b+nocc][j][k] + t2[i][m][b][a]*spo_TEI[m][c+nocc][j][k]
+                                              + t2[j][m][b][c]*spo_TEI[m][a+nocc][i][k] - t2[j][m][a][c]*spo_TEI[m][b+nocc][i][k] - t2[j][m][b][a]*spo_TEI[m][c+nocc][i][k]
+                                               + t2[k][m][b][c]*spo_TEI[m][a+nocc][j][i] - t2[k][m][a][c]*spo_TEI[m][b+nocc][j][i] - t2[k][m][b][a]*spo_TEI[m][c+nocc][j][i]);
+                            }
+                            Et +=  ((Eint*Eint) + ((t1->get(i,a)*spo_TEI[j][k][b+nocc][c+nocc] - t1->get(i,b)*spo_TEI[j][k][a+nocc][c+nocc] - t1->get(i,c)*spo_TEI[j][k][b+nocc][a+nocc]
+                                   -t1->get(j,a)*spo_TEI[i][k][b+nocc][c+nocc] + t1->get(j,b)*spo_TEI[i][k][a+nocc][c+nocc] + t1->get(j,c)*spo_TEI[i][k][b+nocc][a+nocc]
+                                   -t1->get(k,a)*spo_TEI[j][i][b+nocc][c+nocc] + t1->get(k,b)*spo_TEI[j][i][a+nocc][c+nocc] + t1->get(k,c)*spo_TEI[j][i][b+nocc][a+nocc] )*(Eint)))
+                                    / (fMat->get(i,i) + fMat->get(j,j) + fMat->get(k,k) - fMat->get(a+nocc,a+nocc) - fMat->get(b+nocc,b+nocc) - fMat->get(c+nocc,c+nocc));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Et /= 36.0;
+
     //Print a summary
-    outfile->Printf("\nSCF energy                             %20.15f a.u.", Eref);
-    outfile->Printf("\nMP2 energy correction                  %20.15f a.u.", Emp2);
-    outfile->Printf("\nMP2 total energy                       %20.15f a.u. \n\n", Eref+Emp2);
-    outfile->Printf("CCSD correlation energy                %20.15f a.u.", Ecc);
-    outfile->Printf("\nCCSD total energy                      %20.15f a.u.", Ecc + Eref );
+    outfile->Printf("\nSCF energy                                  %20.15f a.u.", Eref);
+    outfile->Printf("\nMP2 energy correction                       %20.15f a.u.", Emp2);
+    outfile->Printf("\nMP2 total energy                            %20.15f a.u. \n\n", Eref+Emp2);
+    outfile->Printf("CCSD correlation energy                     %20.15f a.u.", Ecc);
+    outfile->Printf("\nCCSD total energy                           %20.15f a.u.", Ecc + Eref );
+    outfile->Printf("\nPerturbative Triples (T) correction         %20.15f a.u.", Et);
+    outfile->Printf("\nCCSD(T) total energy                        %20.15f a.u.", Et + Ecc + Eref);
     outfile->Flush();
 
     return Success;

@@ -28,4 +28,3 @@ set ccenergy{
 }
 
 energy('my_ccsd')
-energy('ccsd')
