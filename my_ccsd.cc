@@ -49,6 +49,17 @@ read_options(std::string name, Options &options)
         /*- The amount of information printed
             to the output file -*/
         options.add_int("PRINT", 1);
+
+        //convergence criteria
+        options.add_double("e_conv", 1e-10);
+        options.add_double("t2_conv", 1e-6);
+
+        //Lets user run calculation with (T)
+        options.add_bool("P_TRIPLES", false);
+
+        /*options for SRG-CCSD*/
+        options.add_bool("SRG",false);
+        options.add_double("srg_s", 1.0);
     }
 
     return true;
@@ -247,6 +258,9 @@ my_ccsd(Options &options)
     int count = 0;
     quad t2prev(boost::extents[nocc][nocc][nvir][nvir]);
 
+    if(options.get_bool("SRG") == true){
+        outfile->Printf("\n Computing SRG Transformation\n");
+    }
 
     outfile->Printf("\n    Iter                E(CCSD)                Delta(E)            RMS(T2)   \n");
     outfile->Printf("----------------------------------------------------------------------------------");
@@ -947,6 +961,24 @@ my_ccsd(Options &options)
             }
         }
 
+        //Transform amps using SRG equations
+        if(options.get_bool("SRG") == true){
+            for(int i = 0; i < nocc; ++i){
+                for(int j = 0; j < nocc; ++j){
+                    for(int a = 0; a < nvir; ++a){
+                        for(int b = 0; b < nvir; ++b){
+                            t2[i][j][a][b] = t2[i][j][a][b]*( 1.0 - exp(-1.0*D2[i][j][a][b]*D2[i][j][a][b]*options.get_double("srg_s")) );
+                        }
+                    }
+                }
+            }
+
+            for(int i = 0; i < nocc; ++i){
+                for(int a = 0; a < nvir; ++a){
+                    t1->set(i,a, t1->get(i,a)*( 1.0 - exp(-1.0*options.get_double("srg_s")*(fMat->get(i,i) - fMat->get(a+nocc, a+nocc))*(fMat->get(i,i) - fMat->get(a+nocc, a+nocc)))));
+                }
+            }
+        }
 
         //Compute the energy
         Eprev = Ecc;
@@ -985,18 +1017,18 @@ my_ccsd(Options &options)
         //Print the results for each iteration
         outfile->Printf("\n   [%3d]      %20.12f   %20.12f   %14.6f", count, Ecc, dE, RMS);
 
-        //Convergence criteria defined here, should NOT be hard-coded
-        if(dE < 1e-10 and RMS < 1e-6 ){
+        //Convergence criteria
+        if(dE < options.get_double("e_conv") and RMS < options.get_double("t2_conv") ){
             converged = true;
             outfile->Printf("\n\nCCSD energy has converged in %d cycles.\n", count);
         }
 
     }//end while loop
 
-    //Calclulate perturbative triples correction (CCSD(T))
-
-    outfile->Printf("\nComputing triples (T) correction\n");
     double Et = 0.0;
+    //Calclulate perturbative triples correction (CCSD(T))
+    if(options.get_bool("P_TRIPLES") == true){
+    outfile->Printf("\nComputing triples (T) correction\n");
     double Eint;
 
     for(int i = 0; i < nocc; ++i){
@@ -1028,15 +1060,34 @@ my_ccsd(Options &options)
     }
 
     Et /= 36.0;
+    }//end if
 
     //Print a summary
     outfile->Printf("\nSCF energy                                  %20.15f a.u.", Eref);
-    outfile->Printf("\nMP2 energy correction                       %20.15f a.u.", Emp2);
-    outfile->Printf("\nMP2 total energy                            %20.15f a.u. \n\n", Eref+Emp2);
-    outfile->Printf("CCSD correlation energy                     %20.15f a.u.", Ecc);
-    outfile->Printf("\nCCSD total energy                           %20.15f a.u.", Ecc + Eref );
-    outfile->Printf("\nPerturbative Triples (T) correction         %20.15f a.u.", Et);
-    outfile->Printf("\nCCSD(T) total energy                        %20.15f a.u.", Et + Ecc + Eref);
+    if(options.get_bool("SRG") == false){
+        outfile->Printf("\nMP2 energy correction                       %20.15f a.u.", Emp2);
+        outfile->Printf("\nMP2 total energy                            %20.15f a.u. \n\n", Eref+Emp2);
+        outfile->Printf("CCSD correlation energy                     %20.15f a.u.", Ecc);
+        outfile->Printf("\nCCSD total energy                           %20.15f a.u.", Ecc + Eref );
+        if(options.get_bool("P_TRIPLES") == true){
+            outfile->Printf("\nPerturbative Triples (T) correction         %20.15f a.u.", Et);
+            outfile->Printf("\nCCSD(T) total energy                        %20.15f a.u.", Et + Ecc + Eref);
+        }
+    }
+
+    if(options.get_bool("SRG") == true){
+        outfile->Printf("\nMP2 energy correction                       %20.15f a.u.", Emp2);
+        outfile->Printf("\nMP2 total energy                            %20.15f a.u. \n\n", Eref+Emp2);
+        outfile->Printf("SRG-CCSD correlation energy                     %20.15f a.u.", Ecc);
+        outfile->Printf("\nSRG-CCSD total energy                           %20.15f a.u.", Ecc + Eref );
+        if(options.get_bool("P_TRIPLES") == true){
+            outfile->Printf("\nSRG Perturbative Triples (T) correction         %20.15f a.u.", Et);
+            outfile->Printf("\nSRG-CCSD(T) total energy                        %20.15f a.u.", Et + Ecc + Eref);
+        }
+    }
+
+
+
     outfile->Flush();
 
     return Success;
